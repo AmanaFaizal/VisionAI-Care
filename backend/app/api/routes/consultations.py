@@ -61,6 +61,10 @@ def consultation_detail(
             "reliability_score": session.reliability_score,
             "reliability_flags": session.reliability_flags,
             "test_distance_cm": session.test_distance_cm,
+            "symptoms": session.symptoms,
+            "ai_recommendation": session.ai_recommendation,
+            "ai_explanation": session.ai_explanation,
+            "ai_factors": session.ai_factors,
         } if session else None,
         "results": [
             {
@@ -121,3 +125,31 @@ def review_consultation(
     db.commit()
     db.refresh(c)
     return c
+
+
+import stripe
+from app.core.config import settings
+
+@router.post("/{consultation_id}/pay")
+def create_payment_intent(
+    consultation_id: str,
+    user: User = Depends(require_role(UserRole.patient)),
+    db: Session = Depends(get_db),
+):
+    c = db.query(Consultation).filter(Consultation.id == consultation_id).first()
+    if not c or str(c.patient_id) != str(user.id):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not settings.STRIPE_SECRET_KEY:
+        return {"clientSecret": "mock_secret_key_for_testing"}
+
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=2000, # $20.00
+            currency='usd',
+            metadata={'consultation_id': consultation_id}
+        )
+        return {"clientSecret": intent.client_secret}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

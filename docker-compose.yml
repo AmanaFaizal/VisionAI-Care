@@ -24,7 +24,7 @@ services:
       DATABASE_URL: postgresql+psycopg2://postgres:RaahilHayan@db:5432/visionai
       SECRET_KEY: cd035af24639d41d202fd53f32a81eca0879b96ffff3816300d4b5ac46f25d96
       ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
-      BACKEND_CORS_ORIGINS: '["http://localhost:3000"]'
+      BACKEND_CORS_ORIGINS: '["http://localhost:3001"]'
     depends_on:
       db:
         condition: service_healthy
@@ -39,7 +39,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "3001:3000"
+      - "3001"
 
 volumes:
   visionai_pgdata:

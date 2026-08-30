@@ -55,25 +55,26 @@ async function request(path, { method = "GET", body, auth = true, form = false }
 export const api = {
   register: (payload) => request("/auth/register", { method: "POST", body: payload, auth: false }),
 
-  login: (email, password) => {
+  login: (email, password, role) => {
     const form = new URLSearchParams();
     form.append("username", email);
     form.append("password", password);
+    if (role) form.append("role", role);
     return request("/auth/login", { method: "POST", body: form, auth: false, form: true });
   },
 
   me: () => request("/users/me"),
 
-  startSession: () => request("/vision-tests/sessions", { method: "POST" }),
+  startSession: (testType = "acuity") => request("/vision-tests/sessions", { method: "POST", body: { test_type: testType } }),
   getSession: (id) => request(`/vision-tests/sessions/${id}`),
-  reliabilityCheck: (id, imageBase64, expectedDistanceCm) =>
-    request(`/vision-tests/sessions/${id}/reliability-check`, {
+  updateReliability: (id, payload) =>
+    request(`/vision-tests/sessions/${id}/reliability`, {
       method: "POST",
-      body: { image_base64: imageBase64, expected_distance_cm: expectedDistanceCm },
+      body: payload,
     }),
   submitResult: (id, payload) =>
     request(`/vision-tests/sessions/${id}/results`, { method: "POST", body: payload }),
-  completeSession: (id) => request(`/vision-tests/sessions/${id}/complete`, { method: "POST" }),
+  completeSession: (id, symptoms) => request(`/vision-tests/sessions/${id}/complete`, { method: "POST", body: { symptoms } }),
 
   myConsultations: () => request("/consultations/mine"),
   consultationQueue: () => request("/consultations/queue"),

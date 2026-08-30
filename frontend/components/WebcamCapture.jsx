@@ -51,24 +51,56 @@ export default function WebcamCapture({ sessionId, intervalMs = 4000, onReport }
     };
   }, []);
 
+  const faceDetectionRef = useRef(null);
+
+  useEffect(() => {
+    const initCV = async () => {
+      if (typeof window !== "undefined") {
+        const { FaceDetection } = await import("@mediapipe/face_detection");
+        const faceDetection = new FaceDetection({locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+        }});
+        faceDetection.setOptions({
+          modelSelection: 0,
+          minDetectionConfidence: 0.5
+        });
+        
+        faceDetection.onResults((results) => {
+          const face_detected = results.detections && results.detections.length > 0;
+          const is_blinking = false; // difficult without face mesh
+          const face_centered = face_detected; // simplified
+          
+          const report = {
+            face_detected,
+            eyes_detected: face_detected,
+            is_blinking,
+            face_centered,
+            reliability_score: face_detected ? 0.9 : 0.2,
+            estimated_distance_cm: 40.0,
+            notes: face_detected ? ["Face detected."] : ["No face detected."]
+          };
+          
+          api.updateReliability(sessionId, {
+            reliability_score: report.reliability_score,
+            flags: { blinks: is_blinking ? 1 : 0, off_center_frames: face_centered ? 0 : 1 }
+          }).catch(() => {});
+          
+          onReport && onReport(report);
+        });
+        faceDetectionRef.current = faceDetection;
+      }
+    };
+    initCV();
+  }, [sessionId, onReport]);
+
   const captureAndSend = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current || !sessionId) return;
+    if (!videoRef.current || !sessionId || !faceDetectionRef.current) return;
     const video = videoRef.current;
-    const canvas = canvasRef.current;
     if (!video.videoWidth) return;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-    const base64 = dataUrl.split(",")[1];
-
     try {
-      const report = await api.reliabilityCheck(sessionId, base64, 40.0);
-      onReport && onReport(report);
+      await faceDetectionRef.current.send({image: video});
     } catch (err) {
-      // Non-fatal: monitoring hiccup shouldn't interrupt the test.
       console.warn("reliability check failed", err.message);
     }
   }, [sessionId, onReport]);

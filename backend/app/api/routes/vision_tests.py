@@ -8,23 +8,26 @@ from app.models.user import User, UserRole
 from app.models.vision_test import VisionTestSession, VisionTestResult, TestStatus
 from app.models.consultation import Consultation, ConsultationStatus
 from app.schemas.vision_test import (
+    SessionCreate,
     SessionOut,
     ResultSubmit,
     ResultOut,
-    ReliabilityFrame,
-    ReliabilityReport,
+    ReliabilitySubmit,
+    SessionComplete,
 )
-from app.services.cv_service import analyze_frame
 from app.services.scoring_service import score_result
+from app.services.ai_service import evaluate_screening
 
 router = APIRouter(prefix="/api/vision-tests", tags=["vision-tests"])
 
 
 @router.post("/sessions", response_model=SessionOut, status_code=201)
 def start_session(
-    user: User = Depends(require_role(UserRole.patient)), db: Session = Depends(get_db)
+    session_data: SessionCreate,
+    user: User = Depends(require_role(UserRole.patient)), 
+    db: Session = Depends(get_db)
 ):
-    session = VisionTestSession(patient_id=user.id, status=TestStatus.in_progress)
+    session = VisionTestSession(patient_id=user.id, test_type=session_data.test_type, status=TestStatus.in_progress)
     db.add(session)
     db.commit()
     db.refresh(session)
@@ -41,10 +44,10 @@ def get_session(session_id: str, user: User = Depends(get_current_user), db: Ses
     return session
 
 
-@router.post("/sessions/{session_id}/reliability-check", response_model=ReliabilityReport)
-def reliability_check(
+@router.post("/sessions/{session_id}/reliability", response_model=SessionOut)
+def update_reliability(
     session_id: str,
-    frame: ReliabilityFrame,
+    payload: ReliabilitySubmit,
     user: User = Depends(require_role(UserRole.patient)),
     db: Session = Depends(get_db),
 ):
@@ -52,26 +55,13 @@ def reliability_check(
     if not session or str(session.patient_id) != str(user.id):
         raise HTTPException(status_code=404, detail="Session not found")
 
-    report = analyze_frame(frame.image_base64, frame.expected_distance_cm or 40.0)
-
-    # roll the frame's reliability into the session's running average
-    prev = session.reliability_score
-    session.reliability_score = report["reliability_score"] if prev is None else round(
-        (prev + report["reliability_score"]) / 2, 2
-    )
-    if report.get("estimated_distance_cm"):
-        session.test_distance_cm = report["estimated_distance_cm"]
-    flags = session.reliability_flags or {}
-    if report["is_blinking"]:
-        flags["blinks"] = flags.get("blinks", 0) + 1
-    if not report["face_centered"]:
-        flags["off_center_frames"] = flags.get("off_center_frames", 0) + 1
-    session.reliability_flags = flags
-
+    session.reliability_score = payload.reliability_score
+    session.reliability_flags = payload.flags
     db.add(session)
     db.commit()
+    db.refresh(session)
 
-    return ReliabilityReport(**report)
+    return session
 
 
 @router.post("/sessions/{session_id}/results", response_model=ResultOut, status_code=201)
@@ -85,7 +75,7 @@ def submit_eye_result(
     if not session or str(session.patient_id) != str(user.id):
         raise HTTPException(status_code=404, detail="Session not found")
 
-    scored = score_result(payload.responses, payload.line_sizes)
+    scored = score_result(payload.responses, payload.line_sizes, session.test_type)
     result = VisionTestResult(
         session_id=session.id,
         eye=payload.eye,
@@ -105,6 +95,7 @@ def submit_eye_result(
 @router.post("/sessions/{session_id}/complete", response_model=SessionOut)
 def complete_session(
     session_id: str,
+    payload: SessionComplete,
     user: User = Depends(require_role(UserRole.patient)),
     db: Session = Depends(get_db),
 ):
@@ -112,17 +103,32 @@ def complete_session(
     if not session or str(session.patient_id) != str(user.id):
         raise HTTPException(status_code=404, detail="Session not found")
 
-    reliable = (session.reliability_score or 0) >= 0.4
+    reliable = (session.reliability_score or 1.0) >= 0.4
     session.status = TestStatus.completed if reliable else TestStatus.aborted_unreliable
     session.completed_at = datetime.utcnow()
-    db.add(session)
+    session.symptoms = payload.symptoms
+    
+    if reliable:
+        results = db.query(VisionTestResult).filter(VisionTestResult.session_id == session.id).all()
+        left_acuity = next((r.acuity_score for r in results if r.eye.value == 'left'), None)
+        right_acuity = next((r.acuity_score for r in results if r.eye.value == 'right'), None)
+        
+        ai_res = evaluate_screening(left_acuity, right_acuity, payload.symptoms, session.test_type)
+        session.ai_recommendation = ai_res["recommendation"]
+        session.ai_factors = ai_res["contributing_factors"]
+        session.ai_explanation = ai_res["explanation"]
 
-    consultation = Consultation(
-        session_id=session.id,
-        patient_id=session.patient_id,
-        status=ConsultationStatus.pending,
-    )
-    db.add(consultation)
+    db.add(session)
+    
+    if reliable and session.ai_recommendation != "no immediate concern":
+        consultation = Consultation(
+            session_id=session.id,
+            patient_id=session.patient_id,
+            status=ConsultationStatus.pending,
+        )
+        db.add(consultation)
+
     db.commit()
     db.refresh(session)
     return session
+

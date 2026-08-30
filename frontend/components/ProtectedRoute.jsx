@@ -13,7 +13,7 @@ export default function ProtectedRoute({ role, children }) {
       return;
     }
     if (role && user.role !== role) {
-      router.replace(user.role === "doctor" ? "/doctor/dashboard" : "/patient/dashboard");
+      router.replace(user.role === "doctor" ? "/doctor/dashboard" : "/patient/history");
       return;
     }
     setReady(true);

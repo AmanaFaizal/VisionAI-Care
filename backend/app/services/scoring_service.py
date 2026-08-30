@@ -28,7 +28,7 @@ SIZE_TO_SNELLEN: Dict[int, str] = {
 REFERRAL_THRESHOLD_INDEX = 7  # worse than ~20/50
 
 
-def score_result(responses: List[bool], line_sizes: List[int]) -> dict:
+def score_result(responses: List, line_sizes: List[int], test_type: str = "acuity") -> dict:
     if not responses or not line_sizes or len(responses) != len(line_sizes):
         return {
             "acuity_score": None,
@@ -38,15 +38,51 @@ def score_result(responses: List[bool], line_sizes: List[int]) -> dict:
             "preliminary_flag": "Insufficient data to score this eye.",
         }
 
-    correct = sum(1 for r in responses if r)
     total = len(responses)
+    
+    if test_type == "color":
+        correct = sum(1 for r in responses if str(r).lower() in ["true", "correct", "1", "yes"])
+        flag = "Possible Color Deficiency" if correct < total else None
+        return {
+            "acuity_score": f"{correct}/{total} Plates",
+            "smallest_line_read": None,
+            "correct_responses": correct,
+            "total_responses": total,
+            "preliminary_flag": flag,
+        }
+        
+    if test_type == "astigmatism":
+        # Any 'yes' (true) response to "Are lines darker?" implies possible astigmatism
+        has_astigmatism = any(r in [True, "true", "yes"] for r in responses)
+        flag = "Possible Astigmatism" if has_astigmatism else None
+        return {
+            "acuity_score": "Astigmatism Test",
+            "smallest_line_read": None,
+            "correct_responses": 0 if has_astigmatism else 1,
+            "total_responses": total,
+            "preliminary_flag": flag,
+        }
+        
+    if test_type == "contrast":
+        correct = sum(1 for r in responses if r is True)
+        flag = "Reduced Contrast Sensitivity" if correct < (total - 1) else None
+        return {
+            "acuity_score": f"{correct}/{total} Levels",
+            "smallest_line_read": None,
+            "correct_responses": correct,
+            "total_responses": total,
+            "preliminary_flag": flag,
+        }
+
+    # Default to Acuity Test
+    correct = sum(1 for r in responses if r is True)
 
     # Determine the smallest (best) size index for which the patient answered
     # correctly at least twice (or once if it's the only attempt at that size),
     # walking from the smallest size shown downward for a stable threshold.
     per_size_correct: Dict[int, List[bool]] = {}
     for r, size in zip(responses, line_sizes):
-        per_size_correct.setdefault(size, []).append(r)
+        per_size_correct.setdefault(size, []).append(r is True)
 
     best_reliable_size = None
     for size in sorted(per_size_correct.keys(), reverse=True):

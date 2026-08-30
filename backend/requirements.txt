@@ -8,7 +8,8 @@ pydantic-settings
 python-jose[cryptography]
 bcrypt
 python-multipart
-opencv-python-headless
-mediapipe
 numpy
 python-dotenv
+stripe
+google-generativeai
+

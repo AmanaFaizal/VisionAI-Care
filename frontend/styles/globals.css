@@ -1,9 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+
 :root {
-  --bg: #f5f7fb;
+  --bg: #FBF9F1;
   --card: #ffffff;
-  --primary: #2563eb;
-  --primary-dark: #1d4ed8;
-  --text: #1e293b;
+  --primary: #E86B4D;
+  --primary-dark: #D65A3C;
+  --text: #1E2A38;
   --muted: #64748b;
   --border: #e2e8f0;
   --danger: #dc2626;
@@ -122,6 +128,56 @@ label {
   color: var(--danger);
   font-size: 13px;
   margin: -6px 0 12px;
+}
+
+.auth-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  background: #f8fafc;
+}
+
+.auth-switch-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.auth-switch-btn.active {
+  background: white;
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+.role-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.role-switch-btn {
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+
+.role-switch-btn.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: #eff6ff;
 }
 
 .optotype {
